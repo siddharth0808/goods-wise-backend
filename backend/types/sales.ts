@@ -9,7 +9,7 @@ export type PaymentMethod =
 export interface Sale {
   id: string;
   businessId: string;
-  SK: string;
+  sk: string;
   saleNumber: string;
 
   items: CreateSaleLineItem[];

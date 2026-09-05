@@ -80,7 +80,7 @@ export class SalesService {
       const saleItem: Sale = {
         id: randomUUID(),
         businessId: business.id,
-        SK: `${now}#${saleNumber}`,
+        sk: `${now}#${saleNumber}`,
         saleNumber,
         items: payload.items,
         totalUnits: payload.items.reduce(
