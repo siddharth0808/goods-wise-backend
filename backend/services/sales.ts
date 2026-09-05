@@ -183,7 +183,7 @@ export class SalesService {
       COUNTERS_TABLE,
       {
         PK: `BUSINESS#${businessId}`,
-        SK: `SALE_COUNTER#${financialYear}`,
+        sk: `SALE_COUNTER#${financialYear}`,
       },
       "SET lastNumber = if_not_exists(lastNumber, :zero) + :one",
       null,
