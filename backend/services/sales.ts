@@ -46,7 +46,7 @@ export class SalesService {
         if (Number(item.currentStock) < Number(item.quantity)) {
           const errorRes = {
             code: "INSUFFICIENT_STOCK",
-            message: `Insufficient stock for ${item.name}`,
+            message: `Insufficient stock for ${item.productName}`,
             details: {
               productId: item.productId,
               requested: Number(item.quantity),

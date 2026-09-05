@@ -33,7 +33,7 @@ export interface CreateSaleLineItem {
   name:string;
   quantity: number;
   rate:number;
-  mrp:number;
+  unitPrice:number;
   total:number;
   currentStock: number;
 }
