@@ -46,7 +46,7 @@ export class SalesService {
         if (Number(item.currentStock) < Number(item.quantity)) {
           const errorRes = {
             code: "INSUFFICIENT_STOCK",
-            message: `Insufficient stock for ${item.productName}`,
+            message: `Insufficient stock for ${item.productName}. Requested: ${item.quantity}, Available: ${item.currentStock}`,
             details: {
               productId: item.productId,
               requested: Number(item.quantity),
@@ -92,6 +92,7 @@ export class SalesService {
         subTotalAmt: payload.subTotalAmt,
         totalAmt: payload.totalAmt,
         paymentMethod: payload.paymentMethod,
+        customerInfo: payload?.customerInfo || null,
         status: "COMPLETED",
         createdBy: ownerName,
         createdAt: now,

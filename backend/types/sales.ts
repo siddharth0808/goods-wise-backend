@@ -23,6 +23,8 @@ export interface Sale {
   paymentMethod: PaymentMethod;
   status: SaleStatus;
 
+  customerInfo?: CustomerDetails | null;
+
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -30,7 +32,7 @@ export interface Sale {
 
 export interface CreateSaleLineItem {
   productId: string;
-  name:string;
+  productName:string;
   quantity: number;
   rate:number;
   unitPrice:number;
@@ -46,6 +48,13 @@ export interface Discount {
   value: number;
 }
 
+/** Optional details captured for the customer associated with a sale. */
+export interface CustomerDetails {
+  name?: string;
+  phone?: string;
+  email?: string;
+}
+
 export interface CreateSaleRequest {
   items: CreateSaleLineItem[];
   discount: Discount | null;
@@ -53,4 +62,7 @@ export interface CreateSaleRequest {
   subTotalAmt:number;
   totalAmt:number;
   paymentMethod: PaymentMethod;
+  customerInfo?: CustomerDetails;
+
 }
+
