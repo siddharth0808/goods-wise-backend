@@ -31,11 +31,11 @@ export function formatExpiryDate(date: string) {
   if(date?.includes('/')){
     const [month, year] = date.split("/");
   
-    const fullDate = new Date(2000 + Number(year), Number(month) - 1, 1).valueOf();
+    const fullDate = new Date(2000 + Number(year), Number(month) - 1, 1);
   
     return fullDate
   }
-  return date ? new Date(date).valueOf() :'';
+  return date ? new Date(date) :'';
 }
 
 export function formatSaleNumber(
