@@ -1,12 +1,8 @@
 import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  TransactWriteCommand,
-} from "@aws-sdk/lib-dynamodb";
-import { InventoryTransaction } from "../types";
-import { getTransactionSign } from "../utils";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { json } from "../utils/http";
+  InventoryTransaction,
+  UpdateTransactionRequest,
+} from "../types/transactions";
+import { getTransactionSign } from "../utils/common";
 import { randomUUID } from "crypto";
 import { dynamoDBService } from "../shared/ddb.service";
 
@@ -15,8 +11,9 @@ import {
   PRODUCTS_TABLE,
   TRANSACTIONS_TABLE,
 } from "../constants";
-
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+import { buildResponse } from "../utils/http";
+import { getErrorMessage, logError } from "../utils/logger";
+import { APIGatewayProxyResultV2 } from "aws-lambda";
 
 export class TransactionService {
   constructor(private readonly ddbService = dynamoDBService) {}
@@ -25,84 +22,105 @@ export class TransactionService {
     ownerId: string,
     fullName: string,
     productId: string,
-    body: any,
-  ) {
+    payload: UpdateTransactionRequest,
+  ): Promise<APIGatewayProxyResultV2> {
     try {
       const business = await this.ddbService.getBusinessByOwnerId(
         BUSINESS_TABLE,
         ownerId,
       );
-      if (!business) throw Error("Business not found!");
+
+      if (!business) {
+        logError("updateTransaction", "Business not found");
+        return buildResponse(404, { message: "Business not found" });
+      }
+
       const product = await this.ddbService.getItem(PRODUCTS_TABLE, {
-            businessId: business.id,
-            id: productId,
-          })
+        businessId: business.id,
+        id: productId,
+      });
 
       const currentStock = product?.currentStock ?? 0;
-      const amount = product?.amount ?? 0;
       const rate = product?.rate ?? 0;
 
-      const sign = getTransactionSign(body.type);
-      const signedQuantity = sign * Math.abs(Number(body.quantity) || 0);
+      const sign = getTransactionSign(payload.type);
+      const signedQuantity = sign * Math.abs(Number(payload.quantity) || 0);
       const newStock = Number(currentStock + signedQuantity);
-      const newAmount =  Number(newStock * rate)
-      if (newStock < 0)
-        return json(400, {
+      const newAmount = Number(newStock * rate);
+
+      if (newStock < 0) {
+        logError(
+          "updateTransaction",
+          "Adjustment quantity could not be greater than current stock",
+        );
+        return buildResponse(400, {
           message: `Adjustment quantity could not be greater than current stock!`,
         });
+      }
 
       const item: InventoryTransaction = {
         ownerId,
         businessId: business.id,
         productId,
         id: randomUUID(),
-        type: body.type,
-        quantity: Number(body.quantity),
+        type: payload.type,
+        quantity: Number(payload.quantity),
         previousStock: Number(currentStock),
         newStock,
         newAmount,
-        reason: body.reason ?? "",
+        reason: payload.reason ?? "",
         createdBy: fullName ?? "",
         createdAt: new Date().toISOString(),
       };
 
-      await ddb.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName: PRODUCTS_TABLE,
-                Key: {
-                  businessId: business.id,
-                  id: productId,
-                },
-                UpdateExpression:
-                  "SET currentStock =:currentStock, amount =:amount, updatedAt=:updatedAt",
-                ExpressionAttributeValues: {
-                  ":currentStock": newStock,
-                  ":amount": newAmount,
-                  ":updatedAt": new Date().toISOString(),
-                },
-              },
+      const transactonItems = [
+        {
+          Update: {
+            TableName: PRODUCTS_TABLE,
+            Key: {
+              businessId: business.id,
+              id: productId,
             },
-            {
-              Put: { TableName: TRANSACTIONS_TABLE, Item: item },
+            UpdateExpression:
+              "SET currentStock =:currentStock, amount =:amount, updatedAt=:updatedAt",
+            ExpressionAttributeValues: {
+              ":currentStock": newStock,
+              ":amount": newAmount,
+              ":updatedAt": new Date().toISOString(),
             },
-          ],
-        }),
-      );
-      return item;
-    } catch (error: any) {
-      throw Error(error.message);
+          },
+        },
+        {
+          Put: { TableName: TRANSACTIONS_TABLE, Item: item },
+        },
+      ];
+
+      await this.ddbService.transactWriteItems(transactonItems);
+
+      return buildResponse(201, item);
+    } catch (error: unknown) {
+      logError("updateTransaction", "Error updating transaction", error);
+      return buildResponse(500, {
+        message:getErrorMessage(error),
+      });
     }
   }
 
-  public async getTransactions(ownerId:string,productId:string) {
+  public async getTransactions(
+    productId: string,
+  ): Promise<APIGatewayProxyResultV2> {
     try {
-        const result = await this.ddbService.getAllItems(TRANSACTIONS_TABLE, "productId = :productId",{ ":productId": productId })
-        return result;
-    } catch (error: any) {
-      throw Error(error.message);
+      const result = await this.ddbService.getAllItems(
+        TRANSACTIONS_TABLE,
+        "productId = :productId",
+        { ":productId": productId },
+      );
+      return buildResponse(200, result);
+    } catch (error: unknown) {
+      logError("getTransactions", "Error fetching transactions", error);
+      return buildResponse(500, {
+        message:getErrorMessage(error),
+      });
     }
   }
 }

@@ -9,10 +9,10 @@ export interface ExtractedInvoiceItem {
   id?: string;
   name: string;
 
-  manufacturer?: string;
+  manufacturer?: string | null;
 
-  batchNumber?: string;
-  expiryDate?: any;
+  batchNumber?: string | null;
+  expiryDate?: string;
 
   hsn?: string;
 
@@ -48,3 +48,18 @@ export interface ExtractedInvoice {
 
   total?: number;
 }
+
+export interface InvoiceExtractor {
+  extract(params: {
+    bucket: string;
+    documentKey: string;
+  }): Promise<ExtractedInvoice>;
+}
+
+export type ExistingProduct = {
+  id?: string;
+  name: string;
+  currentStock?: number;
+  amount?: number | string;
+  expiryDate?: string;
+};

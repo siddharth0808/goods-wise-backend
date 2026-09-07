@@ -1,14 +1,12 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getExtension } from "../utils";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getExtension } from "../utils/common";
 import { dynamoDBService } from "../shared/ddb.service";
 import { s3Service } from "../shared/s3Bucket.service";
 import { lambdaService } from "../shared/lambda.service";
 import {
+  ExistingProduct,
   ExtractedInvoice,
   ExtractedInvoiceItem,
 } from "../types/invoicesProcesser";
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "crypto";
 
 import {
@@ -17,21 +15,14 @@ import {
   INVOICE_BUCKET,
   INVOICES_PROCESSER_FUNCTION_NAME,
   PRODUCTS_TABLE,
+  ALLOWED_TYPES,
+  MAX_FILE_SIZE,
 } from "../constants";
+import { CreateInvoiceRequest, LambdaEvent } from "../types/invoices";
+import { getErrorMessage, logError, logInfo } from "../utils/logger";
+import { buildResponse } from "../utils/http";
+import { APIGatewayProxyResultV2 } from "aws-lambda";
 
-const ALLOWED_TYPES = [
-  "application/pdf",
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-];
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-interface CreateInvoiceRequest {
-  fileName: string;
-  contentType: string;
-  fileSize?: number;
-}
 export class UploadInvoiceService {
   constructor(
     public readonly ddbService = dynamoDBService,
@@ -65,17 +56,19 @@ export class UploadInvoiceService {
     return { fileName, contentType, fileSize, businessId };
   }
 
-  public async uploadInvoice(body: any, sub: string) {
+  public async uploadInvoice(payload: CreateInvoiceRequest, sub: string): Promise<APIGatewayProxyResultV2>  {
     try {
-      const { fileName, contentType, fileSize }: CreateInvoiceRequest = body;
+      const { fileName, contentType, fileSize }: CreateInvoiceRequest = payload;
 
       const business = await this.ddbService.getBusinessByOwnerId(
         BUSINESS_TABLE,
         sub,
       );
 
-      console.log("Business respons::::", JSON.stringify(business));
-      if (!business) throw Error("Business not found!");
+      if (!business) {
+        logError("uploadInvoice", "Business not found");
+        return buildResponse(404, { message: "Business not found" });
+      }
 
       await this.validatedUploadInvoiceReq(
         sub,
@@ -85,7 +78,7 @@ export class UploadInvoiceService {
         fileSize,
       );
 
-      const invoiceId = crypto.randomUUID();
+      const invoiceId = randomUUID();
 
       const extension = getExtension(fileName, contentType);
 
@@ -115,40 +108,49 @@ export class UploadInvoiceService {
         contentType,
       );
 
-      return {
+      return buildResponse(200, {
         invoiceId,
         status: invoice.status,
         uploadUrl,
         expiresIn: 900,
-      };
-    } catch (error: any) {
-      console.log("uploadInvoice error::::", error.stack);
-      throw Error(error.message);
+      });
+    } catch (error: unknown) {
+      logError("uploadInvoice", "Error uploading invoice", error);
+      return buildResponse(500, {
+        message: getErrorMessage(error),
+      });
     }
   }
 
-  public async updateInvoiceStatus(sub: string, invoiceId: string) {
+  public async updateInvoiceStatus(sub: string, invoiceId: string): Promise<APIGatewayProxyResultV2>  {
     try {
       const business = await this.ddbService.getBusinessByOwnerId(
         BUSINESS_TABLE,
         sub,
       );
-      if (!business) throw Error("Matching business not found!");
-
+      if (!business) {
+        logError("updateInvoiceStatus", "Business not found");
+        return buildResponse(404, { message: "Business not found" });
+      }
       const invoice = await dynamoDBService.getItem(INVOICES_TABLE, {
         businessId: business.id,
         id: invoiceId,
       });
 
-      if (!Object.keys(invoice).length)
-        throw Error("Matching invoice not found!");
+      if (!Object.keys(invoice).length) {
+        logError("updateInvoiceStatus", "Invoice not found");
+        return buildResponse(404, { message: "Invoice not found" });
+      }
 
       const exists = await this.s3.isObjectAvailable(
         INVOICE_BUCKET,
         invoice.documentKey,
       );
 
-      if (!exists) throw Error("Object does not exist");
+      if (!exists) {
+        logError("updateInvoiceStatus", "Object does not exist");
+        return buildResponse(404, { message: "Object does not exist" });
+      }
 
       await this.ddbService.updateItems(
         INVOICES_TABLE,
@@ -166,7 +168,7 @@ export class UploadInvoiceService {
         },
       );
 
-      const lambdaEvent = {
+      const lambdaEvent: LambdaEvent = {
         businessId: business.id,
         invoiceId,
       };
@@ -176,66 +178,89 @@ export class UploadInvoiceService {
         lambdaEvent,
       );
 
-      return { invoiceId, status: "UPLOADED" };
-    } catch (error: any) {
-      console.log("updateInvoiceUploadStatus error::::", error.stack);
-      throw Error(error.message);
+      return buildResponse(200, { invoiceId, status: "UPLOADED" });
+    } catch (error: unknown) {
+      logError("updateInvoiceStatus", "Error updating invoice status", error);
+      return buildResponse(500, { message: getErrorMessage(error) });
     }
   }
 
-  public async getInvoiceStatus(sub: string, invoiceId: string) {
+  public async getInvoiceStatus(sub: string, invoiceId: string): Promise<APIGatewayProxyResultV2>  {
     try {
       const business = await this.ddbService.getBusinessByOwnerId(
         BUSINESS_TABLE,
         sub,
       );
-      if (!business) throw Error("Matching business not found!");
+      if (!business) {
+        logError("getInvoiceStatus", "Business not found");
+        return buildResponse(404, { message: "Business not found" });
+      }
 
       const invoice = await dynamoDBService.getItem(INVOICES_TABLE, {
         businessId: business.id,
         id: invoiceId,
       });
 
-      if (!Object.keys(invoice).length)
-        throw Error("Matching invoice not found!");
+      if (!Object.keys(invoice).length) {
+        logError("getInvoiceStatus", "Invoice not found");
+        return buildResponse(404, { message: "Invoice not found" });
+      }
 
-      return { invoiceId, status: invoice.status };
-    } catch (error: any) {
-      console.log("getInvoiceStatus error::::", error.stack);
-      throw Error(error.message);
+      return buildResponse(200, { invoiceId, status: invoice.status });
+    } catch (error: unknown) {
+      logError("getInvoiceStatus", "Error getting invoice status", error);
+      return buildResponse(500, { message: getErrorMessage(error) });
     }
   }
 
-  public async getInvoiceReview(ownerId: string, invoiceId: string) {
+  public async getInvoiceReview(ownerId: string, invoiceId: string): Promise<APIGatewayProxyResultV2>  {
     try {
       const business = await this.ddbService.getBusinessByOwnerId(
         BUSINESS_TABLE,
         ownerId,
       );
-      if (!business) throw Error("Matching business not found!");
+      if (!business) {
+        logError("getInvoiceReview", "Business not found");
+        return buildResponse(404, { message: "Business not found" });
+      }
 
       const invoice = await dynamoDBService.getItem(INVOICES_TABLE, {
         businessId: business.id,
         id: invoiceId,
       });
 
-      if (!Object.keys(invoice).length)
-        throw Error("Matching invoice not found!");
+      if (!Object.keys(invoice).length) {
+        logError("getInvoiceReview", "Invoice not found");
+        return buildResponse(404, { message: "Invoice not found" });
+      }
 
       let invoiceProducts: ExtractedInvoiceItem[] = [];
 
       try {
         invoiceProducts = invoice?.products ? JSON.parse(invoice.products) : [];
-      } catch (error: any) {
-        console.log("Error while pars json:::", error.stack);
-        throw Error("Error while pars json");
+      } catch (error: unknown) {
+        logError("getInvoiceReview", "Error parsing invoice products", error);
+        return buildResponse(500, {
+          message: "Error parsing invoice products",
+        });
       }
-      console.log("invoiceProducts:::::", JSON.stringify(invoiceProducts));
+
+      logInfo(
+        "getInvoiceReview",
+        "invoiceProducts",
+        JSON.stringify(invoiceProducts),
+      );
 
       const productNames = invoiceProducts.map(
         (product: ExtractedInvoiceItem) => product.name,
       );
-      console.log("invoice productNames:::::", JSON.stringify(productNames))
+
+      logInfo(
+        "getInvoiceReview",
+        "invoice productNames",
+        JSON.stringify(productNames),
+      );
+
       const existingProducts = await Promise.all(
         productNames.map((name) =>
           this.ddbService.getItemsByIndex(
@@ -252,19 +277,34 @@ export class UploadInvoiceService {
           ),
         ),
       );
-      console.log("existingProducts:::::", JSON.stringify(existingProducts));
 
-      let flatedExisitngProducts: any = [];
-      existingProducts.forEach((item: any) => {
-        flatedExisitngProducts = [...flatedExisitngProducts, ...item];
+      logInfo(
+        "getInvoiceReview",
+        "existingProducts",
+        JSON.stringify(existingProducts),
+      );
+
+      let flatedExisitngProducts: ExistingProduct[] = [];
+      existingProducts.forEach((item) => {
+        flatedExisitngProducts = [
+          ...flatedExisitngProducts,
+          ...(item as ExistingProduct[]),
+        ];
       });
-      console.log(
-        "flatedExisitngProducts:::::",
+
+      logInfo(
+        "getInvoiceReview",
+        "flatedExisitngProducts",
         JSON.stringify(flatedExisitngProducts),
       );
-      let products: any = [];
+
+      let products: Array<ExtractedInvoiceItem & {
+        id: string;
+        status: string;
+        currentQuantity: number;
+      }> = [];
       if (!flatedExisitngProducts.length) {
-        products = invoiceProducts.map((product: any) => {
+        products = invoiceProducts.map((product: ExtractedInvoiceItem) => {
           return {
             ...product,
             id: randomUUID(),
@@ -273,37 +313,48 @@ export class UploadInvoiceService {
           };
         });
       } else {
-        products = invoiceProducts.map((product: any) => {
+        products = invoiceProducts.map((product: ExtractedInvoiceItem) => {
           const existingProduct = flatedExisitngProducts.find(
-            (e: any) => e.name === product.name,
+            (e: ExistingProduct) => e.name === product.name,
           );
-          console.log("existingProduct::::::::::::::::::", existingProduct)
-          return existingProduct?.id ? {
-            ...product,
-            id: existingProduct?.id ,
-            status: "EXISTING",
-            currentQuantity: existingProduct.currentStock,
-            amount: Number(existingProduct.amount) + Number(product.amount),
-            expiryDate: product.expiryDate ? product.expiryDate : existingProduct.expiryDate
-          } : {
-            ...product,
-            id: randomUUID(),
-            status: "NEW",
-            currentQuantity: 0,
-          };
+
+          logInfo("getInvoiceReview", "existingProduct", existingProduct);
+
+          return existingProduct?.id
+            ? {
+                ...product,
+                id: existingProduct?.id,
+                status: "EXISTING",
+                currentQuantity: existingProduct.currentStock ?? 0,
+                amount: Number(existingProduct.amount) + Number(product.amount),
+                expiryDate: product.expiryDate
+                  ? product.expiryDate
+                  : existingProduct.expiryDate,
+              }
+            : {
+                ...product,
+                id: randomUUID(),
+                status: "NEW",
+                currentQuantity: 0,
+              };
         });
       }
 
-      return {
+      return buildResponse(200, {
         invoiceNumber: invoice.invoiceNumber,
         invoiceDate: invoice.invoiceDate,
         products,
         supplier: invoice.supplier,
         total: invoice.total,
-      } as ExtractedInvoice;
-    } catch (error: any) {
-      console.log("getInvoiceStatus error::::", error.stack);
-      throw Error(error.message);
+      } as ExtractedInvoice);
+
+    } catch (error: unknown) {
+      logError(
+        "getInvoiceReview",
+        "Error occurred while reviewing invoice",
+        error,
+      );
+      return buildResponse(500, { message: getErrorMessage(error) });
     }
   }
 }

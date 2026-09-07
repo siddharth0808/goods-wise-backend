@@ -5,9 +5,10 @@ import {
   type AnalyzeExpenseResponse,
   type ExpenseField,
 } from "@aws-sdk/client-textract";
-import { InvoiceExtractor } from "../types/invoicesProcesser.interface";
+import { InvoiceExtractor } from "../types/invoicesProcesser";
 import { ExtractedInvoice } from "../types/invoicesProcesser";
-import { formatExpiryDate } from "../utils";
+import { formatExpiryDate } from "../utils/common";
+import { logInfo } from "../utils/logger";
 export class TextractInvoiceExtractor implements InvoiceExtractor {
   private readonly textract = new TextractClient({});
 
@@ -66,7 +67,7 @@ export class TextractInvoiceExtractor implements InvoiceExtractor {
       this.getSummaryValue(summaryFields, "SUBTOTAL"),
     );
 
-    const items: any = (expenseDocument.LineItemGroups ?? [])
+    const items = (expenseDocument.LineItemGroups ?? [])
       .flatMap((group) => group.LineItems ?? [])
       .map((group) => this.normalizeLineItem(group))
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -113,8 +114,8 @@ export class TextractInvoiceExtractor implements InvoiceExtractor {
   normalizeLineItem(group: LineItemFields) {
     const fields = group?.LineItemExpenseFields ?? [];
 
-    let values: Record<string, any> = {};
-    const otherValues:any = {};
+    let values: Record<string, string> = {};
+    const otherValues: Record<string, string> = {};
     for (const field of fields) {
       const type = field.Type?.Text;
       const value = field.ValueDetection?.Text?.trim();
@@ -129,14 +130,18 @@ export class TextractInvoiceExtractor implements InvoiceExtractor {
       }
     }
     values = { ...values, ...otherValues };
-    console.log("Values::::", JSON.stringify(values))
+    logInfo("normalizeLineItem", "Values::::", JSON.stringify(values))
     const productName = values.ITEM || values.PRODUCT || values.DESCRIPTION;
     const pack =  values.PACK || values.PACKAGE || undefined;
-    const quantity = this.parseNumber(values.QUANTITY || 0);
+    const quantity = this.parseNumber(values.QUANTITY || "0");
 
     if (!productName || quantity === undefined) {
       return null;
     }
+
+    const expiryDate = formatExpiryDate(
+      values.EXPIRY_DATE || values.EXPIRY || values.EXP || values['EXP.'] || '',
+    );
 
     return {
       name: pack ? `${productName} ${pack}`: productName,
@@ -145,7 +150,7 @@ export class TextractInvoiceExtractor implements InvoiceExtractor {
 
       batchNumber: values.BATCH_NUMBER || values.BATCH || values['BATCH NO.'] || values.PRODUCT_CODE || null,
 
-      expiryDate: formatExpiryDate(values.EXPIRY_DATE || values.EXPIRY || values.EXP || values['EXP.'] || null),
+      expiryDate: expiryDate === undefined ? undefined : String(expiryDate),
 
       hsn: values.HSN || "0",
 

@@ -1,12 +1,12 @@
 import { APIGatewayProxyEventV2WithJWTAuthorizer } from "aws-lambda";
-import { getClaims, json, response } from "../utils/http";
+import { buildResponse, getClaims } from "../utils/http";
 import { UploadInvoiceService } from "../services/invoices";
+import { logError } from "../utils/logger";
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+  event: APIGatewayProxyEventV2WithJWTAuthorizer
 ) => {
   try {
-    console.log("EVENT::::", JSON.stringify(event));
 
     const method = event.requestContext.http.method;
     const path = event.requestContext.http.path;
@@ -14,39 +14,42 @@ export const handler = async (
 
     const service = new UploadInvoiceService();
 
+    // Create a new invoice
     if (method === "POST" && path.includes("/status")) {
       const invoiceId = event.pathParameters?.invoiceId;
-      if (!invoiceId) return json(400, { message: "invoiceId is required" });
-      const response = await service.updateInvoiceStatus(sub, invoiceId);
-      return json(201, response);
+      if (!invoiceId) return buildResponse(400, { message: "invoiceId is required" });
+      const updateInvoiceStatus = await service.updateInvoiceStatus(sub, invoiceId);
+      return updateInvoiceStatus;
     }
 
+    // Get invoice status
     if (method === "GET" && path.includes("/status")) {
       const invoiceId = event.pathParameters?.invoiceId;
-      if (!invoiceId) return json(400, { message: "invoiceId is required" });
-      const response = await service.getInvoiceStatus(sub, invoiceId);
-      return json(200, response);
+      if (!invoiceId) return buildResponse(400, { message: "invoiceId is required" });
+      const getInvoiceStatus = await service.getInvoiceStatus(sub, invoiceId);
+      return getInvoiceStatus;
     }
 
+    // Get invoice review
     if (method === "GET" && path.includes("/review")) {
       const invoiceId = event.pathParameters?.invoiceId;
-      if (!invoiceId) return json(400, { message: "invoiceId is required" });
-      const response = await service.getInvoiceReview(sub, invoiceId);
-      return json(200, response);
+      if (!invoiceId) return buildResponse(400, { message: "invoiceId is required" });
+      const getInvoiceReview = await service.getInvoiceReview(sub, invoiceId);
+      return getInvoiceReview
     }
 
+    // Upload a new invoice
     const body = event.body ? JSON.parse(event.body) : null;
     if (!body) {
-      return json(400, {
+      return buildResponse(400, {
         message: "Request body is required",
       });
     }
-    const response = await service.uploadInvoice(body, sub);
-    return json(201, response);
+    const uploadInvoice = await service.uploadInvoice(body, sub);
+    return uploadInvoice
   } catch (error) {
-    console.error("Create invoice failed", error);
-
-    return response(500, {
+    logError("uploadInvoice", "Error uploading invoice", error);
+    return buildResponse(500, {
       message: "Failed to create invoice",
     });
   }

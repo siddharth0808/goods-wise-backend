@@ -15,7 +15,7 @@ export interface ApiStackProps extends StackProps {
   ordersFn: lambdaNode.NodejsFunction;
   transactionsFn: lambdaNode.NodejsFunction;
   invoicesFn: lambdaNode.NodejsFunction;
-
+  salesFn: lambdaNode.NodejsFunction;
   stage?: string;
 }
 
@@ -88,6 +88,10 @@ export class ApiStack extends Stack {
       "invoicesIntegration",
       props.invoicesFn,
     );
+    const salesIntegration = createIntegration(
+      "salesIntegration",
+      props.salesFn,
+    );
 
     addRoute(
       httpApi,
@@ -140,6 +144,12 @@ export class ApiStack extends Stack {
       "/invoices/{invoiceId}/review",
       [apigwv2.HttpMethod.GET],
       invoicesIntegration,
+    );
+    addRoute(
+      httpApi,
+      "/sales",
+      [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET],
+      salesIntegration,
     );
 
     new CfnOutput(this, "ApiUrl", { value: httpApi.apiEndpoint });

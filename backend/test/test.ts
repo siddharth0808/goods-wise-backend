@@ -1,6 +1,7 @@
 import {handler} from '../functions/invoices'
+import { logError, logInfo } from '../utils/logger'
 import { event } from './events/lambda'
 
 handler(event as any).then((res)=>{
-    console.log(res)
-}).catch(error=> console.log(error))
+    logInfo("Lambda Response", "Response", JSON.stringify(res))
+}).catch(error=> logError("Lambda Response", "Error", error))

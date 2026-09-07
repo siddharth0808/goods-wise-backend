@@ -1,11 +1,10 @@
 import { APIGatewayProxyEventV2WithJWTAuthorizer } from "aws-lambda";
-import { json, getClaims } from "../utils/http";
+import { buildResponse, getClaims } from "../utils/http";
 import { ProductService } from "../services/products";
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ) => {
-  console.log("EVENT::::", JSON.stringify(event));
 
   const method = event.requestContext.http.method;
   const path = event.requestContext.http.path;
@@ -14,48 +13,53 @@ export const handler = async (
 
   const service = new ProductService();
 
+  // Import products from invoice
   if (method === "POST" && path.includes('/import')) {
     const products = JSON.parse(event.body ?? "[]");
-    if(!products.length) return json(400, 'No products in payload!')
-    const item = await service.importProducts(sub, products);
-    return json(201, item);
+    if(!products.length) return buildResponse(400, 'No products in payload!')
+    const importProductRes = await service.importProducts(sub, products);
+    return importProductRes;
   }
 
+  // Create a new product
   if (method === "POST") {
     const body = JSON.parse(event.body ?? "{}");
     const required = ["name", "mrp", "rate", "currentStock", "expiryDate"];
     const missing = required.filter((field) => !body[field]);
     if (missing.length) {
-      return json(400, { message: `Missing fields: ${missing.join(", ")}` });
+      return buildResponse(400, { message: `Missing fields: ${missing.join(", ")}` });
     }
-    const item = await service.createProduct(sub, body);
-    return json(201, item);
+    const createProductRes = await service.createProduct(sub, body);
+    return createProductRes;
   }
 
+  // Update an existing product
   if (method === "PATCH") {
-      const { id }: any = event.pathParameters;
+    const { id } = event.pathParameters as Record<string, string>;
 
     const body = JSON.parse(event.body ?? "{}");
     const required = ["name", "mrp", "rate", "expiryDate"];
 
     const missing = required.filter((field) => !body[field]);
     if (missing.length) {
-      return json(400, { message: `Missing fields: ${missing.join(", ")}` });
+      return buildResponse(400, { message: `Missing fields: ${missing.join(", ")}` });
     }
-    const item = await service.updateProduct(sub, id, body);
-    return json(200, item);
+    const updateProductRes = await service.updateProduct(sub, id, body);
+    return updateProductRes;
   }
 
+  // Delete an existing product
   if (method === "DELETE") {
-      const { id }: any = event.pathParameters;
-    const item = await service.deleteProduct(sub, id);
-    return json(200, item);
+    const { id } = event.pathParameters as Record<string, string>;
+    const deleteProductRes = await service.deleteProduct(sub, id);
+    return deleteProductRes;
   }
 
+  // Get all products for a user
   if (method === "GET") {
-    const result = await service.getProducts(sub);
-    return json(200, result);
+    const getProductsRes = await service.getProducts(sub);
+    return getProductsRes;
   }
 
-  return json(405, { message: "Method not allowed" });
+  return buildResponse(405, { message: "Method not allowed" });
 };

@@ -2,8 +2,8 @@ import { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { randomUUID } from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { json, getClaims } from '../utils/http';
-import { Order, OrderStatus } from '../types';
+import {  buildResponse, getClaims } from '../utils/http';
+import { Order, OrderStatus } from '../types/order';
 import { ORDERS_TABLE } from '../constants';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -19,7 +19,7 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer) =>
     const body = JSON.parse(event.body ?? '{}');
 
     if (!body.ownerId || !body.orders?.length) {
-      return json(400, { message: 'ownerId and a non-empty orders list are required' });
+      return buildResponse(400, { message: 'ownerId and a non-empty orders list are required' });
     }
 
     const total = (body.orders as { price: number; quantity: number }[]).reduce(
@@ -40,12 +40,12 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer) =>
     };
 
     await ddb.send(new PutCommand({ TableName: ORDERS_TABLE, Item: order }));
-    return json(201, order);
+    return buildResponse(201, order);
   }
 
   if (method === 'GET') {
     const ownerId = event.pathParameters?.ownerId;
-    if (!ownerId) return json(400, { message: 'ownerId is required' });
+    if (!ownerId) return buildResponse(400, { message: 'ownerId is required' });
 
     const result = await ddb.send(
       new QueryCommand({
@@ -54,7 +54,7 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer) =>
         ExpressionAttributeValues: { ':ownerId': ownerId },
       })
     );
-    return json(200, result.Items ?? []);
+    return buildResponse(200, result.Items ?? []);
   }
 
   if (method === 'PATCH' && routeKey.includes('/status')) {
@@ -63,9 +63,9 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer) =>
     const body = JSON.parse(event.body ?? '{}');
     const status = body.status as OrderStatus;
 
-    if (!ownerId || !orderId) return json(400, { message: 'ownerId and orderId are required' });
+    if (!ownerId || !orderId) return buildResponse(400, { message: 'ownerId and orderId are required' });
     if (!['PLACED', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SHIPPED'].includes(status)) {
-      return json(400, { message: 'status must be PLACED, ACCEPTED, COMPLETED, CANCELLED, or SHIPPED' });
+      return buildResponse(400, { message: 'status must be PLACED, ACCEPTED, COMPLETED, CANCELLED, or SHIPPED' });
     }
 
     await ddb.send(
@@ -77,8 +77,8 @@ export const handler = async (event: APIGatewayProxyEventV2WithJWTAuthorizer) =>
         ExpressionAttributeValues: { ':status': status },
       })
     );
-    return json(200, { ownerId, orderId, status });
+    return buildResponse(200, { ownerId, orderId, status });
   }
 
-  return json(405, { message: 'Method not allowed' });
+  return buildResponse(405, { message: 'Method not allowed' });
 };

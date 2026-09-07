@@ -1,4 +1,4 @@
-import { extractedInvoiceSchema } from "../types/invoicesProcesser.schema";
+import { extractedInvoiceSchema } from "../schema/invoicesProcesser.schema";
 import {
   type ExtractedInvoice,
 } from "../types/invoicesProcesser";

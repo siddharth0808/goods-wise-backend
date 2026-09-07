@@ -1,21 +1,9 @@
 import { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 
-export function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
+export function buildResponse(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
   return {
     statusCode,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
-
-export function response(statusCode: number, body: unknown) {
-  return {
-    statusCode,
-
-    headers: {
-      "Content-Type": "application/json",
-    },
-
     body: JSON.stringify(body),
   };
 }
