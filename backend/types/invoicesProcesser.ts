@@ -9,9 +9,9 @@ export interface ExtractedInvoiceItem {
   id?: string;
   name: string;
 
-  manufacturer?: string;
+  manufacturer?: string | null;
 
-  batchNumber?: string;
+  batchNumber?: string | null;
   expiryDate?: string;
 
   hsn?: string;

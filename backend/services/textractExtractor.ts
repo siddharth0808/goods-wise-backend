@@ -146,9 +146,9 @@ export class TextractInvoiceExtractor implements InvoiceExtractor {
     return {
       name: pack ? `${productName} ${pack}`: productName,
 
-      manufacturer: values.MANUFACTURER ||values.MFR|| values['MFG.'] || values['MFR.'] || '',
+      manufacturer: values.MANUFACTURER ||values.MFR|| values['MFG.'] || values['MFR.'] || null,
 
-      batchNumber: values.BATCH_NUMBER || values.BATCH || values['BATCH NO.'] || values.PRODUCT_CODE || '',
+      batchNumber: values.BATCH_NUMBER || values.BATCH || values['BATCH NO.'] || values.PRODUCT_CODE || null,
 
       expiryDate: expiryDate === undefined ? undefined : String(expiryDate),
 
