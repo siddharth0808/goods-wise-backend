@@ -36,5 +36,5 @@ export function formatExpiryDate(date: string) {
   
     return fullDate
   }
-  return date ? new Date(date).valueOf() :'';
+  return date ? new Date(date).valueOf() : null;
 }
