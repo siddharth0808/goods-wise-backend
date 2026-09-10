@@ -1,6 +1,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable preserve-caught-error */import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -86,6 +87,19 @@ export class S3Service {
       }
 
       return Buffer.from(await response.Body.transformToByteArray());
+    } catch (error: any) {
+      throw Error(error.message);
+    }
+  }
+
+  public async deleteObject(Bucket: string, Key: string) {
+    try {
+      await s3.send(
+        new DeleteObjectCommand({
+          Bucket,
+          Key,
+        }),
+      );
     } catch (error: any) {
       throw Error(error.message);
     }

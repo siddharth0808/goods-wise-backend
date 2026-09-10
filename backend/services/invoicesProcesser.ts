@@ -4,18 +4,22 @@ import { textractInvoiceExtractor } from "./textractExtractor";
 import { INVOICES_TABLE, INVOICE_BUCKET } from "../constants";
 import { logError, logInfo } from "../utils/logger";
 import { LambdaEvent } from "../types/invoices";
+import { s3Service } from "../shared/s3Bucket.service";
 export class InvoiceProcesserService {
   constructor(
     private readonly ddbService = dynamoDBService,
     public readonly invoiceExtractor = textractInvoiceExtractor,
+    private readonly s3 = s3Service,
   ) {}
 
   public async execute(event: LambdaEvent): Promise<void> {
+   
+    const invoice = await this.ddbService.getItem(INVOICES_TABLE, {
+      businessId: event.businessId,
+      id: event.invoiceId,
+    });
+
     try {
-      const invoice = await this.ddbService.getItem(INVOICES_TABLE, {
-        businessId: event.businessId,
-        id: event.invoiceId,
-      });
 
       if (!invoice) {
         logError("InvoiceProcesserService", "Invoice not found", {
@@ -87,6 +91,24 @@ export class InvoiceProcesserService {
       );
     } catch (error: unknown) {
       logError("InvoiceProcesserService", "Error processing invoice", error);
+      
+      await this.ddbService.updateItems(
+        INVOICES_TABLE,
+        {
+          businessId: event.businessId,
+          id: event.invoiceId,
+        },
+        `SET #status = :status, updatedAt = :updatedAt`,
+        {
+          "#status": "status",
+        },
+        {
+          ":status": "FAILED",
+          ":updatedAt": new Date().toISOString(),
+        },
+      );
+
+      await this.s3.deleteObject(INVOICE_BUCKET, invoice.documentKey);
     }
   }
 }
