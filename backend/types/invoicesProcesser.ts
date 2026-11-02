@@ -18,6 +18,9 @@ export interface ExtractedInvoiceItem {
 
   quantity: number;
 
+  /** Pieces per strip/pack for this item, supplied by the client reviewing the invoice (OCR cannot read this reliably). */
+  unitsPerStrip?: number;
+
   mrp?: number;
   rate?: number;
   discount?: number;

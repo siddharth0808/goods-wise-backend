@@ -49,6 +49,8 @@ export class ProductService {
         return buildResponse(404, { message: "Business not found" });
       }
 
+      const unitsPerStrip = Number(payload.unitsPerStrip) || 1;
+
       const item: CreateProductRequest = {
         id: randomUUID(),
         ownerId,
@@ -57,7 +59,9 @@ export class ProductService {
         category: business.businessType,
         rate: Number(payload.rate),
         mrp: Number(payload.mrp),
-        currentStock: Number(payload.currentStock),
+        unitsPerStrip,
+        // currentStock is entered in strips; store it in pieces so stock math is unambiguous.
+        currentStock: Number(payload.currentStock) * unitsPerStrip,
         manufacturer: payload?.manufacturer || "",
         batchNumber: payload?.batchNumber || "",
         hsn: payload?.hsn || "",
@@ -95,6 +99,7 @@ export class ProductService {
         mrp,
         rate,
         currentStock,
+        unitsPerStrip,
         minimumStock,
         expiryDate,
         manufacturer,
@@ -112,12 +117,14 @@ export class ProductService {
         return buildResponse(404, { message: "Business not found" });
       }
 
+      const resolvedUnitsPerStrip = Number(unitsPerStrip) || 1;
+
       const updateItems = {
         Key: {
           businessId: business.id,
           id: productId,
         },
-        UpdateExpression: `SET #name = :name, mrp = :mrp, rate = :rate, currentStock = :currentStock, minimumStock = :minimumStock, expiryDate = :expiryDate, manufacturer = :manufacturer, amount = :amount, discount = :discount, updatedAt = :updatedAt`,
+        UpdateExpression: `SET #name = :name, mrp = :mrp, rate = :rate, currentStock = :currentStock, unitsPerStrip = :unitsPerStrip, minimumStock = :minimumStock, expiryDate = :expiryDate, manufacturer = :manufacturer, amount = :amount, discount = :discount, updatedAt = :updatedAt`,
         ExpressionAttributeNames: {
           "#name": "name",
         },
@@ -125,7 +132,9 @@ export class ProductService {
           ":name": name,
           ":mrp": Number(mrp),
           ":rate": Number(rate),
-          ":currentStock": Number(currentStock),
+          // currentStock is entered in strips; store it in pieces so stock math is unambiguous.
+          ":currentStock": Number(currentStock) * resolvedUnitsPerStrip,
+          ":unitsPerStrip": resolvedUnitsPerStrip,
           ":minimumStock": Number(minimumStock),
           ":expiryDate": new Date(expiryDate).valueOf(),
           ":manufacturer": manufacturer,
@@ -181,6 +190,7 @@ export class ProductService {
 
       if (newProducts.length) {
         items = newProducts.map((product: ExtractedInvoiceItem) => {
+          const unitsPerStrip = Number(product.unitsPerStrip) || 1;
           return {
             id: product.id,
             ownerId,
@@ -190,11 +200,13 @@ export class ProductService {
             manufacturer: product?.manufacturer || "",
             rate: Number(product.rate || 0),
             mrp: Number(product.mrp || 0),
+            unitsPerStrip,
             batchNumber: product.batchNumber,
             hsn: product?.hsn || "",
             status: product.status,
             amount: Number(product?.amount || 0),
-            currentStock: Number(product.quantity || 0),
+            // quantity from the invoice is in strips; store stock in pieces.
+            currentStock: Number(product.quantity || 0) * unitsPerStrip,
             minimumStock: Number(product?.minimumStock || 0),
             cgst: Number(product?.cgst || 0),
             sgst: Number(product?.sgst || 0),
@@ -220,20 +232,24 @@ export class ProductService {
       if (existingProducts.length) {
         const updateItems = existingProducts.map(
           (product: ExtractedInvoiceItem) => {
+            const unitsPerStrip = Number(product.unitsPerStrip) || 1;
             return {
               Key: {
                 businessId: business.id,
                 id: product.id,
               },
               UpdateExpression:
-                "SET #status = :status, currentStock = :currentStock, mrp = :mrp, rate = :rate, amount = :amount, updatedAt = :updatedAt",
+                "SET #status = :status, currentStock = :currentStock, unitsPerStrip = :unitsPerStrip, mrp = :mrp, rate = :rate, amount = :amount, updatedAt = :updatedAt",
               ExpressionAttributeNames: {
                 "#status": "status",
               },
               ExpressionAttributeValues: {
                 ":status": product.status,
+                // product.currentQuantity is the existing stock in pieces; product.quantity (this invoice) is in strips.
                 ":currentStock":
-                  Number(product.quantity) + Number(product.currentQuantity),
+                  Number(product.currentQuantity) +
+                  Number(product.quantity) * unitsPerStrip,
+                ":unitsPerStrip": unitsPerStrip,
                 ":mrp": Number(product.mrp),
                 ":rate": Number(product.rate),
                 ":amount": Number(product.amount),

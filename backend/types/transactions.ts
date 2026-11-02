@@ -6,7 +6,11 @@ export interface InventoryTransaction {
 
   type: "STOCK_IN" | "STOCK_OUT" | "DAMAGE" | "RETURN" | "ADJUSTMENT";
 
+  /** Always expressed in pieces, the unit stock is tracked in. */
   quantity: number;
+  /** For a sale, the quantity actually entered by the cashier, in `saleUnit`. */
+  soldQuantity?: number;
+  saleUnit?: "STRIP" | "PIECE";
 
   previousStock: number;
   newStock: number;

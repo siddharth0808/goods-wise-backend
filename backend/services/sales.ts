@@ -11,7 +11,7 @@ import { buildResponse } from "../utils/http";
 import { getErrorMessage, logError, logInfo } from "../utils/logger";
 import { decodeNextToken, encodeNextToken } from "../utils/token";
 import { CreateSaleRequest, Sale } from "../types/sales";
-import { formatSaleNumber, getFinancialYear } from "../utils/common";
+import { formatSaleNumber, getFinancialYear, toPieces } from "../utils/common";
 import { randomUUID } from "crypto";
 export class SalesService {
   constructor(private readonly ddbService = dynamoDBService) {}
@@ -43,13 +43,19 @@ export class SalesService {
       const transactions = [];
 
       for (const item of payload.items) {
-        if (Number(item.currentStock) < Number(item.quantity)) {
+        const piecesSold = toPieces(
+          item.quantity,
+          item.saleUnit,
+          item.unitsPerStrip,
+        );
+
+        if (Number(item.currentStock) < piecesSold) {
           const errorRes = {
             code: "INSUFFICIENT_STOCK",
-            message: `Insufficient stock for ${item.productName}. Requested: ${item.quantity}, Available: ${item.currentStock}`,
+            message: `Insufficient stock for ${item.productName}. Requested: ${item.quantity} ${item.saleUnit.toLowerCase()}(s), Available: ${item.currentStock} piece(s)`,
             details: {
               productId: item.productId,
-              requested: Number(item.quantity),
+              requested: piecesSold,
               available: Number(item.currentStock),
             },
           };
@@ -57,8 +63,10 @@ export class SalesService {
           return buildResponse(400, errorRes);
         }
 
-        const newStock = Number(item.currentStock) - Number(item.quantity);
-        const newAmount = Number(newStock) * Number(item.rate);
+        const newStock = Number(item.currentStock) - piecesSold;
+        const ratePerPiece =
+          Number(item.rate) / (Number(item.unitsPerStrip) || 1);
+        const newAmount = Number(newStock) * ratePerPiece;
 
         transactions.push({
           Update: {
@@ -84,7 +92,8 @@ export class SalesService {
         saleNumber,
         items: payload.items,
         totalUnits: payload.items.reduce(
-          (sum, item) => sum + Number(item.quantity),
+          (sum, item) =>
+            sum + toPieces(item.quantity, item.saleUnit, item.unitsPerStrip),
           0,
         ),
         discount: payload.discount,
@@ -108,8 +117,15 @@ export class SalesService {
       });
 
       for (const item of payload.items) {
-        const newStock = Number(item.currentStock) - Number(item.quantity);
-        const newAmount = Number(newStock) * Number(item.rate);
+        const piecesSold = toPieces(
+          item.quantity,
+          item.saleUnit,
+          item.unitsPerStrip,
+        );
+        const newStock = Number(item.currentStock) - piecesSold;
+        const ratePerPiece =
+          Number(item.rate) / (Number(item.unitsPerStrip) || 1);
+        const newAmount = Number(newStock) * ratePerPiece;
         transactions.push({
           Put: {
             TableName: TRANSACTIONS_TABLE,
@@ -119,7 +135,9 @@ export class SalesService {
               productId: item.productId,
               id: randomUUID(),
               type: "STOCK_OUT",
-              quantity: Number(item.quantity),
+              quantity: piecesSold,
+              soldQuantity: Number(item.quantity),
+              saleUnit: item.saleUnit,
               previousStock: Number(item.currentStock),
               newStock,
               newAmount,

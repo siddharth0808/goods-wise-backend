@@ -2,6 +2,9 @@ export type Product = {
   name: string;
   rate: number;
   mrp: number;
+  /** Pieces per strip/pack as billed by the supplier (e.g. 10 tablets/strip). Defaults to 1 for items already sold loose. */
+  unitsPerStrip: number;
+  /** Total stock on hand, always expressed in pieces (currentStock = strips * unitsPerStrip). */
   currentStock: number;
   minimumStock: number;
   expiryDate: number;

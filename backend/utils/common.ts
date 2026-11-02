@@ -1,4 +1,5 @@
 import { TransactionType, TRANSACTION_TYPE_OPTIONS } from "../types/transactions";
+import { SaleUnit } from "../types/sales";
 
 export function getTransactionSign(type: TransactionType): 1 | -1 {
   const match = TRANSACTION_TYPE_OPTIONS.find((option) => option.value === type);
@@ -43,6 +44,34 @@ export function formatSaleNumber(
   sequence: number,
 ): string {
   return `SALE-${financialYear}-${String(sequence).padStart(5, "0")}`;
+}
+
+/** Converts a quantity sold in strips/pieces into pieces, the unit stock is tracked in. */
+export function toPieces(
+  quantity: number,
+  saleUnit: SaleUnit,
+  unitsPerStrip: number,
+): number {
+  if (saleUnit === "PIECE") {
+    return Number(quantity);
+  }
+  return Number(quantity) * (Number(unitsPerStrip) || 1);
+}
+
+/**
+ * Price for one unit of `saleUnit`, derived from the strip price.
+ * Loose pieces are rounded up to the nearest rupee, the common pharmacy convention.
+ */
+export function getUnitSalePrice(
+  stripPrice: number,
+  saleUnit: SaleUnit,
+  unitsPerStrip: number,
+): number {
+  const perStrip = Number(unitsPerStrip) || 1;
+  if (saleUnit === "STRIP" || perStrip <= 1) {
+    return Number(stripPrice);
+  }
+  return Math.ceil(Number(stripPrice) / perStrip);
 }
 
 export function getFinancialYear(date = new Date()): string {
